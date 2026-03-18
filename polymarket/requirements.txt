@@ -1,0 +1,5 @@
+rich
+python-dotenv
+web3
+requests
+py-clob-client

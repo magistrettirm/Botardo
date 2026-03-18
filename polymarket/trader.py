@@ -48,21 +48,21 @@ class PolymarketTrader:
         """
         Busca mercados activos de BTC 5-min Up or Down.
         Slug pattern: btc-updown-5m-{unix_timestamp}
-        Se generan nuevos cada 5 minutos.
+        Solo busca ventana actual + siguiente (2-3 requests, no 10).
         """
         markets = []
         now = int(time.time())
-        # Buscar mercados en los proximos 30 minutos (6 slots de 5 min)
         base = now - (now % 300)
 
-        for offset in range(-2, 8):
+        # Solo buscar: ventana actual, siguiente, y la de despues (3 max)
+        for offset in range(0, 3):
             ts = base + (offset * 300)
             slug = f"btc-updown-5m-{ts}"
             try:
                 r = requests.get(
                     "https://gamma-api.polymarket.com/events",
                     params={"slug": slug},
-                    timeout=8,
+                    timeout=5,
                 )
                 data = r.json()
                 if data:
@@ -195,6 +195,30 @@ class PolymarketTrader:
         except Exception as e:
             logger.error(f"Market order failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def check_order_filled(self, order_id: str) -> bool:
+        """Verifica si una orden se lleno consultando el CLOB"""
+        if not order_id or not self.connected:
+            return False
+        try:
+            order = self.client.get_order(order_id)
+            status = order.get("status", "").upper() if isinstance(order, dict) else ""
+            return status in ("MATCHED", "FILLED")
+        except Exception as e:
+            logger.error(f"Error checking order {order_id}: {e}")
+            return False
+
+    def cancel_order(self, order_id: str) -> bool:
+        """Cancela una orden abierta"""
+        if not order_id or not self.connected:
+            return False
+        try:
+            self.client.cancel(order_id)
+            logger.info(f"Order {order_id} cancelled")
+            return True
+        except Exception as e:
+            logger.error(f"Error cancelling order {order_id}: {e}")
+            return False
 
     def execute_binary_arbitrage(
         self, market: Dict, amount_usdc: float = 10.0
